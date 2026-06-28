@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>LateroCamera - 傾き調整カメラ</title>
+  <meta name="description" content="カメラ映像をリアルタイムに任意の角度に傾けて表示する、リハビリテーションおよび評価用カメラツール。">
+  <!-- PWA Settings -->
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- メインコンテナ -->
+  <div class="app-container">
+    
+    <!-- カメラ映像表示領域 -->
+    <div class="camera-viewport" id="viewport">
+      <video id="video" autoplay playsinline muted></video>
+      
+      <!-- 静的参照線（画面に対して固定） -->
+      <div class="reference-overlay static-ref" id="staticRef">
+        <div class="plumb-line-v"></div>
+        <div class="plumb-line-h"></div>
+        <div class="grid-mesh"></div>
+      </div>
+
+      <!-- 動的参照線（映像と一緒に回転） -->
+      <div class="reference-overlay rotated-ref" id="rotatedRef">
+        <div class="rotated-line-v"></div>
+        <div class="rotated-line-h"></div>
+      </div>
+      
+      <!-- 画面中央の基準マーク -->
+      <div class="center-crosshair"></div>
+    </div>
+
+    <!-- フローティング：コントロール表示トグルボタン（コントロールパネル非表示時に表示） -->
+    <button class="floating-btn hidden" id="showControlsBtn" aria-label="コントロールパネルを表示">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    </button>
+
+    <!-- コントロールパネル -->
+    <div class="control-panel" id="controlPanel">
+      <div class="panel-header">
+        <div class="panel-title-area">
+          <span class="badge">ACTIVE</span>
+          <h1>LateroCamera</h1>
+        </div>
+        <button class="icon-btn" id="hideControlsBtn" aria-label="コントロールパネルを隠す">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+        </button>
+      </div>
+
+      <!-- メイン角度表示・スライダー -->
+      <div class="panel-section angle-controller">
+        <div class="angle-header">
+          <label for="angleSlider">回転角度</label>
+          <div class="angle-value-container">
+            <input type="number" id="angleInput" value="0" min="-180" max="180" step="0.1" aria-label="角度の数値入力">
+            <span class="unit">°</span>
+          </div>
+        </div>
+        
+        <!-- スライダー -->
+        <div class="slider-wrapper">
+          <input type="range" id="angleSlider" min="-90" max="90" step="0.5" value="0">
+          <div class="slider-ticks">
+            <span class="tick" data-val="-90">-90°</span>
+            <span class="tick" data-val="-45">-45°</span>
+            <span class="tick" data-val="0">0°</span>
+            <span class="tick" data-val="45">45°</span>
+            <span class="tick" data-val="90">90°</span>
+          </div>
+        </div>
+
+        <!-- 微調整用ボタン -->
+        <div class="fine-tune-buttons">
+          <button class="btn btn-secondary btn-sm" id="btnDec10" title="-10度微調整">-10°</button>
+          <button class="btn btn-secondary btn-sm" id="btnDec1" title="-1度微調整">-1°</button>
+          <button class="btn btn-secondary btn-sm" id="btnDec01" title="-0.1度微調整">-0.1°</button>
+          <button class="btn btn-primary btn-sm" id="btnReset" title="0度にリセット">RESET</button>
+          <button class="btn btn-secondary btn-sm" id="btnInc01" title="+0.1度微調整">+0.1°</button>
+          <button class="btn btn-secondary btn-sm" id="btnInc1" title="+1度微調整">+1°</button>
+          <button class="btn btn-secondary btn-sm" id="btnInc10" title="+10度微調整">+10°</button>
+        </div>
+      </div>
+
+      <!-- クイックプリセット -->
+      <div class="panel-section">
+        <h2>プリセット選択</h2>
+        <div class="presets-grid">
+          <button class="preset-btn" data-angle="-30">-30°</button>
+          <button class="preset-btn" data-angle="-15">-15°</button>
+          <button class="preset-btn" data-angle="-10">-10°</button>
+          <button class="preset-btn" data-angle="-5">-5°</button>
+          <button class="preset-btn active" data-angle="0">0°</button>
+          <button class="preset-btn" data-angle="5">+5°</button>
+          <button class="preset-btn" data-angle="10">+10°</button>
+          <button class="preset-btn" data-angle="15">+15°</button>
+          <button class="preset-btn" data-angle="30">+30°</button>
+        </div>
+      </div>
+
+      <!-- 設定トグル項目 -->
+      <div class="panel-section options-grid">
+        <!-- 自動スケーリング -->
+        <div class="toggle-control">
+          <div class="toggle-info">
+            <span class="toggle-label">自動ズーム補正</span>
+            <span class="toggle-desc">余白をカットする拡大</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoScaleToggle" checked>
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <!-- ミラー表示 -->
+        <div class="toggle-control">
+          <div class="toggle-info">
+            <span class="toggle-label">左右反転 (ミラー)</span>
+            <span class="toggle-desc">インカメラ使用時に便利</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="mirrorToggle">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <!-- 参照線モード -->
+        <div class="select-control">
+          <div class="select-info">
+            <span class="select-label">ガイドライン表示</span>
+          </div>
+          <select id="gridModeSelect" class="styled-select">
+            <option value="none">非表示</option>
+            <option value="plumb" selected>垂直・水平の十字線</option>
+            <option value="grid">グリッド（格子）</option>
+            <option value="rotated">映像連動の回転線</option>
+            <option value="both">画面固定＋回転線</option>
+          </select>
+        </div>
+
+        <!-- ガイド線色 -->
+        <div class="select-control">
+          <div class="select-info">
+            <span class="select-label">ガイド線の色</span>
+          </div>
+          <select id="gridColorSelect" class="styled-select">
+            <option value="cyan">シアン (明るい青)</option>
+            <option value="red">レッド (赤)</option>
+            <option value="green">グリーン (緑)</option>
+            <option value="yellow">イエロー (黄)</option>
+            <option value="white">ホワイト (白)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- デバイスコントロールボタン -->
+      <div class="panel-footer">
+        <button class="btn btn-action" id="switchCameraBtn" title="カメラを切り替える">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19c-1.9 0-3.66-.77-4.95-2.05a8 8 0 0 1-2-5.74V11a2 2 0 0 1 2-2h1.59l1.3-2.18A2 2 0 0 1 10.63 6h2.74a2 2 0 0 1 1.7 1.1L16.4 9H18a2 2 0 0 1 2 2v.21a8 8 0 0 1-2 5.74A7.95 7.95 0 0 1 13 19h-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          カメラ切替
+        </button>
+        <button class="btn btn-action" id="fullscreenBtn" title="全画面表示の切り替え">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          全画面表示
+        </button>
+      </div>
+    </div>
+
+    <!-- カメラアクセスエラー時の警告表示 -->
+    <div class="error-overlay hidden" id="errorOverlay">
+      <div class="error-dialog">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <h2>カメラにアクセスできません</h2>
+        <p id="errorMessage">カメラの使用許可が拒否されたか、他のアプリで使用中の可能性があります。ブラウザの設定でカメラへのアクセスを許可してください。</p>
+        <button class="btn btn-primary" id="retryCameraBtn">再試行</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
