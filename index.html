@@ -87,12 +87,12 @@
         </button>
       </div>
 
-      <!-- メイン角度表示・スライダー -->
+      <!-- ==================== 1. 左右傾きコントロール (ロール) ==================== -->
       <div class="panel-section angle-controller">
         <div class="angle-header">
-          <label for="angleSlider">回転角度</label>
+          <label for="angleSlider">左右傾き (ロール回転)</label>
           <div class="angle-value-container">
-            <input type="number" id="angleInput" value="0" min="-180" max="180" step="0.1" aria-label="角度の数値入力">
+            <input type="number" id="angleInput" value="0" min="-180" max="180" step="0.1" aria-label="左右角度の数値入力">
             <span class="unit">°</span>
           </div>
         </div>
@@ -119,11 +119,8 @@
           <button class="btn btn-secondary btn-sm" id="btnInc1" title="+1度微調整">+1°</button>
           <button class="btn btn-secondary btn-sm" id="btnInc10" title="+10度微調整">+10°</button>
         </div>
-      </div>
 
-      <!-- クイックプリセット -->
-      <div class="panel-section">
-        <h2>プリセット選択</h2>
+        <!-- 左右プリセット -->
         <div class="presets-grid">
           <button class="preset-btn" data-angle="-30">-30°</button>
           <button class="preset-btn" data-angle="-15">-15°</button>
@@ -137,83 +134,156 @@
         </div>
       </div>
 
-      <!-- 設定トグル項目 -->
-      <div class="panel-section options-grid">
-        <!-- 自動スケーリング -->
-        <div class="toggle-control">
-          <div class="toggle-info">
-            <span class="toggle-label">自動ズーム補正</span>
-            <span class="toggle-desc">余白をカットする拡大</span>
+      <!-- ==================== 2. 前後勾配コントロール (ピッチ) ==================== -->
+      <div class="panel-section pitch-controller">
+        <div class="angle-header">
+          <label for="pitchSlider">前後勾配 (坂道の錯覚)</label>
+          <div class="angle-value-container">
+            <input type="number" id="pitchInput" value="0" min="-45" max="45" step="0.5" aria-label="前後勾配の数値入力">
+            <span class="unit">°</span>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="autoScaleToggle" checked>
-            <span class="slider-round"></span>
-          </label>
+        </div>
+        
+        <!-- スライダー -->
+        <div class="slider-wrapper">
+          <input type="range" id="pitchSlider" min="-30" max="30" step="0.5" value="0">
+          <div class="slider-ticks">
+            <span class="tick-pitch" data-val="-30">-30° (下り)</span>
+            <span class="tick-pitch" data-val="-10">-10°</span>
+            <span class="tick-pitch" data-val="0">0° (平地)</span>
+            <span class="tick-pitch" data-val="10">+10°</span>
+            <span class="tick-pitch" data-val="30">+30° (上り)</span>
+          </div>
         </div>
 
-        <!-- ミラー表示 -->
-        <div class="toggle-control">
-          <div class="toggle-info">
-            <span class="toggle-label">左右反転 (ミラー)</span>
-            <span class="toggle-desc">インカメラ使用時に便利</span>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="mirrorToggle">
-            <span class="slider-round"></span>
-          </label>
+        <!-- 微調整用ボタン -->
+        <div class="fine-tune-buttons">
+          <button class="btn btn-secondary btn-sm" id="btnPitchDec5" title="-5度微調整">-5°</button>
+          <button class="btn btn-secondary btn-sm" id="btnPitchDec1" title="-1度微調整">-1°</button>
+          <button class="btn btn-primary btn-sm" id="btnPitchReset" title="平地にリセット">RESET</button>
+          <button class="btn btn-secondary btn-sm" id="btnPitchInc1" title="+1度微調整">+1°</button>
+          <button class="btn btn-secondary btn-sm" id="btnPitchInc5" title="+5度微調整">+5°</button>
         </div>
 
-        <!-- VR/HMD モード (追加) -->
-        <div class="toggle-control">
-          <div class="toggle-info">
-            <span class="toggle-label">VR/HMDモード</span>
-            <span class="toggle-desc">左右2画面に均等分割</span>
+        <!-- 勾配オプションエリア (プリセット & ジャイロ) -->
+        <div class="pitch-options">
+          <div class="presets-row">
+            <button class="preset-pitch-btn" data-pitch="-15">急下り (-15°)</button>
+            <button class="preset-pitch-btn" data-pitch="-5">緩下り (-5°)</button>
+            <button class="preset-pitch-btn active" data-pitch="0">平地 (0°)</button>
+            <button class="preset-pitch-btn" data-pitch="5">緩上り (+5°)</button>
+            <button class="preset-pitch-btn" data-pitch="15">急上り (+15°)</button>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="vrModeToggle">
-            <span class="slider-round"></span>
-          </label>
+          
+          <div class="gyro-control-wrapper">
+            <!-- ジャイロ連動トグル -->
+            <div class="toggle-control mini-toggle">
+              <div class="toggle-info">
+                <span class="toggle-label">ジャイロ連動 (頭部傾き)</span>
+                <span class="toggle-desc">頭の動きで映像勾配を動的変調</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="gyroToggle">
+                <span class="slider-round"></span>
+              </label>
+            </div>
+            
+            <!-- ジャイロ感度設定 -->
+            <div class="select-control mini-select">
+              <div class="select-info">
+                <span class="select-label">ジャイロ感度</span>
+              </div>
+              <select id="gyroGainSelect" class="styled-select select-xs">
+                <option value="1.0">感度 低 (1.0x)</option>
+                <option value="1.5" selected>感度 標準 (1.5x)</option>
+                <option value="2.0">感度 高 (2.0x)</option>
+                <option value="3.0">感度 極高 (3.0x)</option>
+              </select>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <!-- 参照線モード -->
-        <div class="select-control">
-          <div class="select-info">
-            <span class="select-label">ガイドライン表示</span>
+      <!-- ==================== 3. 各種設定トグル項目 ==================== -->
+      <div class="panel-section">
+        <h2>アプリ設定</h2>
+        <div class="options-grid">
+          <!-- 自動スケーリング -->
+          <div class="toggle-control">
+            <div class="toggle-info">
+              <span class="toggle-label">自動ズーム補正</span>
+              <span class="toggle-desc">余白をカットする拡大</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="autoScaleToggle" checked>
+              <span class="slider-round"></span>
+            </label>
           </div>
-          <select id="gridModeSelect" class="styled-select">
-            <option value="none">非表示</option>
-            <option value="plumb" selected>垂直・水平の十字線</option>
-            <option value="grid">グリッド（格子）</option>
-            <option value="rotated">映像連動の回転線</option>
-            <option value="both">画面固定＋回転線</option>
-          </select>
-        </div>
 
-        <!-- ガイド線色 -->
-        <div class="select-control">
-          <div class="select-info">
-            <span class="select-label">ガイド線の色</span>
+          <!-- ミラー表示 -->
+          <div class="toggle-control">
+            <div class="toggle-info">
+              <span class="toggle-label">左右反転 (ミラー)</span>
+              <span class="toggle-desc">インカメラ使用時に便利</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="mirrorToggle">
+              <span class="slider-round"></span>
+            </label>
           </div>
-          <select id="gridColorSelect" class="styled-select">
-            <option value="cyan">シアン (明るい青)</option>
-            <option value="red">レッド (赤)</option>
-            <option value="green">グリーン (緑)</option>
-            <option value="yellow">イエロー (黄)</option>
-            <option value="white">ホワイト (白)</option>
-          </select>
-        </div>
 
-        <!-- ガイド線の太さ (追加でバランス調整) -->
-        <div class="select-control">
-          <div class="select-info">
-            <span class="select-label">ガイド線の太さ</span>
+          <!-- VR/HMD モード -->
+          <div class="toggle-control">
+            <div class="toggle-info">
+              <span class="toggle-label">VR/HMDモード</span>
+              <span class="toggle-desc">左右2画面に均等分割</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="vrModeToggle">
+              <span class="slider-round"></span>
+            </label>
           </div>
-          <select id="gridThicknessSelect" class="styled-select">
-            <option value="thin">細い (1.0px)</option>
-            <option value="normal" selected>標準 (1.5px)</option>
-            <option value="thick">太い (3.0px)</option>
-            <option value="extra">極太 (5.0px)</option>
-          </select>
+
+          <!-- 参照線モード -->
+          <div class="select-control">
+            <div class="select-info">
+              <span class="select-label">ガイドライン表示</span>
+            </div>
+            <select id="gridModeSelect" class="styled-select">
+              <option value="none">非表示</option>
+              <option value="plumb" selected>垂直・水平の十字線</option>
+              <option value="grid">グリッド（格子）</option>
+              <option value="rotated">映像連動の回転線</option>
+              <option value="both">画面固定＋回転線</option>
+            </select>
+          </div>
+
+          <!-- ガイド線色 -->
+          <div class="select-control">
+            <div class="select-info">
+              <span class="select-label">ガイド線の色</span>
+            </div>
+            <select id="gridColorSelect" class="styled-select">
+              <option value="cyan">シアン (明るい青)</option>
+              <option value="red">レッド (赤)</option>
+              <option value="green">グリーン (緑)</option>
+              <option value="yellow">イエロー (黄)</option>
+              <option value="white">ホワイト (白)</option>
+            </select>
+          </div>
+
+          <!-- ガイド線の太さ -->
+          <div class="select-control">
+            <div class="select-info">
+              <span class="select-label">ガイド線の太さ</span>
+            </div>
+            <select id="gridThicknessSelect" class="styled-select">
+              <option value="thin">細い (1.0px)</option>
+              <option value="normal" selected>標準 (1.5px)</option>
+              <option value="thick">太い (3.0px)</option>
+              <option value="extra">極太 (5.0px)</option>
+            </select>
+          </div>
         </div>
       </div>
 

@@ -2,14 +2,19 @@
 // Application State Management
 // ==========================================================================
 const state = {
-  angle: 0.0,
+  angle: 0.0,                      // 左右傾き (Roll)
+  pitch: 0.0,                      // 前後勾配 (Pitch) - 手動設定値
   isAutoScale: true,
   isMirrored: false,
-  isVrMode: false,                 // VR/HMDモード (左右画面分割)
+  isVrMode: false,                 // VR/HMDモード
+  isGyroEnabled: false,            // ジャイロセンサー連動
+  gyroGain: 1.5,                   // ジャイロ感度（倍率）
+  initialBeta: null,               // ジャイロ基準角（キャリブレーション用）
+  gyroOffset: 0.0,                 // ジャイロによる動的傾きオフセット
   currentFacingMode: 'environment', // 優先して背面カメラを使用
   gridMode: 'plumb',               // デフォルトは十字線
   gridColor: 'cyan',
-  gridThickness: 'normal',         // ガイド線の太さ
+  gridThickness: 'normal',
   stream: null,
   availableCameras: []
 };
@@ -49,24 +54,34 @@ const el = {
   controlPanel: document.getElementById('controlPanel'),
   showControlsBtn: document.getElementById('showControlsBtn'),
   hideControlsBtn: document.getElementById('hideControlsBtn'),
+  
+  // 左右傾きコントロール (ロール)
   angleSlider: document.getElementById('angleSlider'),
   angleInput: document.getElementById('angleInput'),
+  presetButtons: document.querySelectorAll('.preset-btn'),
+  
+  // 前後勾配コントロール (ピッチ)
+  pitchSlider: document.getElementById('pitchSlider'),
+  pitchInput: document.getElementById('pitchInput'),
+  presetPitchButtons: document.querySelectorAll('.preset-pitch-btn'),
   
   // トグルスイッチ
   autoScaleToggle: document.getElementById('autoScaleToggle'),
   mirrorToggle: document.getElementById('mirrorToggle'),
   vrModeToggle: document.getElementById('vrModeToggle'),
+  gyroToggle: document.getElementById('gyroToggle'),
   
   // セレクトボックス
   gridModeSelect: document.getElementById('gridModeSelect'),
   gridColorSelect: document.getElementById('gridColorSelect'),
   gridThicknessSelect: document.getElementById('gridThicknessSelect'),
+  gyroGainSelect: document.getElementById('gyroGainSelect'),
   
   // アクションボタン
   switchCameraBtn: document.getElementById('switchCameraBtn'),
   fullscreenBtn: document.getElementById('fullscreenBtn'),
   
-  // 参照線リスト (querySelectorAllで一括管理)
+  // 参照線リスト
   staticRefs: document.querySelectorAll('.static-ref'),
   rotatedRefs: document.querySelectorAll('.rotated-ref'),
   
@@ -75,48 +90,87 @@ const el = {
   errorMessage: document.getElementById('errorMessage'),
   retryCameraBtn: document.getElementById('retryCameraBtn'),
   
-  // プリセットボタン
-  presetButtons: document.querySelectorAll('.preset-btn'),
-  
-  // 微調整ボタン
+  // ロール微調整ボタン
   btnDec10: document.getElementById('btnDec10'),
   btnDec1: document.getElementById('btnDec1'),
   btnDec01: document.getElementById('btnDec01'),
   btnReset: document.getElementById('btnReset'),
   btnInc01: document.getElementById('btnInc01'),
   btnInc1: document.getElementById('btnInc1'),
-  btnInc10: document.getElementById('btnInc10')
+  btnInc10: document.getElementById('btnInc10'),
+  
+  // ピッチ微調整ボタン
+  btnPitchDec5: document.getElementById('btnPitchDec5'),
+  btnPitchDec1: document.getElementById('btnPitchDec1'),
+  btnPitchReset: document.getElementById('btnPitchReset'),
+  btnPitchInc1: document.getElementById('btnPitchInc1'),
+  btnPitchInc5: document.getElementById('btnPitchInc5')
 };
 
 // ==========================================================================
 // Video Rendering & Transformation Logic
 // ==========================================================================
 function updateTransform() {
-  const rad = Math.abs((state.angle * Math.PI) / 180);
-  let scaleFactor = 1.0;
+  const radRoll = Math.abs((state.angle * Math.PI) / 180);
+  
+  // 実質適用するピッチ角（手動設定値 ＋ ジャイロ動的変化量）
+  let visualPitch = state.pitch + (state.isGyroEnabled ? state.gyroOffset : 0.0);
+  
+  // 安全限界を設定（HMDで表示がおかしくならないよう -45° 〜 45° に制限）
+  if (visualPitch > 45) visualPitch = 45;
+  if (visualPitch < -45) visualPitch = -45;
+  
+  const radPitch = Math.abs((visualPitch * Math.PI) / 180);
 
-  if (state.isAutoScale && state.angle !== 0) {
-    // 左目用コンテナの寸法を基準にする（VRモード時は画面半分、通常時は全画面のサイズを自動取得）
-    const w = el.leftEye.clientWidth || window.innerWidth;
-    const h = el.leftEye.clientHeight || window.innerHeight;
-    
+  // 視線誘導のための上下垂直シフト（1度につき約 3.5 ピクセル移動）
+  const pitchShiftY = visualPitch * 3.5;
+
+  let baseScale = 1.0;
+  let pitchScale = 1.0;
+
+  // 1つの目用コンテナの寸法を取得
+  const w = el.leftEye.clientWidth || window.innerWidth;
+  const h = el.leftEye.clientHeight || window.innerHeight;
+
+  if (state.isAutoScale) {
     if (w > 0 && h > 0) {
-      // 画面アスペクト比の最大値
-      const aspectRatio = Math.max(w / h, h / w);
-      // 回転角とアスペクト比を考慮した、余白が生じないためのスケール倍率の計算
-      scaleFactor = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad)) * aspectRatio;
+      // 左右ロール回転による余白補正
+      if (state.angle !== 0) {
+        const aspectRatio = Math.max(w / h, h / w);
+        baseScale = Math.abs(Math.cos(radRoll)) + Math.abs(Math.sin(radRoll)) * aspectRatio;
+      }
+      
+      // 前後ピッチ傾斜および上下シフトによる余白補正
+      if (visualPitch !== 0) {
+        // ピッチ傾斜による台形歪み補正 (3D回転による天地の縮み補正)
+        const tiltCorrection = 1.0 + Math.abs(Math.sin(radPitch)) * 0.45;
+        // 上下シフトによる余白補正
+        const shiftCorrection = 1.0 + (Math.abs(pitchShiftY) / (h / 2));
+        
+        pitchScale = tiltCorrection * shiftCorrection;
+      }
     }
   }
 
-  // 左右反転と回転・拡大の組み合わせ
-  const horizontalScale = state.isMirrored ? -scaleFactor : scaleFactor;
-  const transformString = `rotate(${state.angle}deg) scale(${horizontalScale}, ${scaleFactor})`;
+  // アスペクト比を維持しつつ均等に拡大
+  const totalScale = baseScale * pitchScale;
+  const horizontalScale = state.isMirrored ? -totalScale : totalScale;
 
-  // 左右のビデオ要素両方に同時に適用
+  // 3D遠近感 (perspective), 前後ピッチ (rotateX), 水平シフト (translateY), 左右ロール (rotateZ), 拡大率 (scale) を統合
+  // 注意: rotateXのパース適用のため perspective をトランスフォームの先頭に定義します
+  const transformString = `
+    perspective(800px) 
+    rotateX(${visualPitch}deg) 
+    translateY(${-pitchShiftY}px) 
+    rotate(${state.angle}deg) 
+    scale(${horizontalScale}, ${totalScale})
+  `;
+
+  // 左右のビデオ要素に適用
   el.videoLeft.style.transform = transformString;
   el.videoRight.style.transform = transformString;
 
-  // 連動回転するガイドラインの更新
+  // 映像連動回転参照線の回転更新
   if (state.gridMode === 'rotated' || state.gridMode === 'both') {
     el.rotatedRefs.forEach(ref => {
       ref.style.transform = `rotate(${state.angle}deg)`;
@@ -124,7 +178,7 @@ function updateTransform() {
   }
 }
 
-// 角度変更時の状態同期
+// 左右角度 (Roll) の状態同期
 function setAngle(newAngle) {
   let boundedAngle = parseFloat(newAngle);
   if (isNaN(boundedAngle)) boundedAngle = 0.0;
@@ -132,13 +186,11 @@ function setAngle(newAngle) {
   if (boundedAngle > 180) boundedAngle = 180;
   if (boundedAngle < -180) boundedAngle = -180;
 
-  state.angle = Math.round(boundedAngle * 10) / 10; // 小数点第1位までに丸める
+  state.angle = Math.round(boundedAngle * 10) / 10;
   
-  // UIの同期
   el.angleInput.value = state.angle.toFixed(1);
   el.angleSlider.value = state.angle;
 
-  // プリセットボタンのアクティブ表示切替
   el.presetButtons.forEach(btn => {
     const btnAngle = parseFloat(btn.getAttribute('data-angle'));
     if (btnAngle === state.angle) {
@@ -151,11 +203,107 @@ function setAngle(newAngle) {
   updateTransform();
 }
 
+// 前後勾配 (Pitch) の状態同期
+function setPitch(newPitch) {
+  let boundedPitch = parseFloat(newPitch);
+  if (isNaN(boundedPitch)) boundedPitch = 0.0;
+  
+  if (boundedPitch > 45) boundedPitch = 45;
+  if (boundedPitch < -45) boundedPitch = -45;
+
+  state.pitch = Math.round(boundedPitch * 10) / 10;
+  
+  el.pitchInput.value = state.pitch.toFixed(1);
+  el.pitchSlider.value = state.pitch;
+
+  el.presetPitchButtons.forEach(btn => {
+    const btnPitch = parseFloat(btn.getAttribute('data-pitch'));
+    if (btnPitch === state.pitch) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  updateTransform();
+}
+
+// ==========================================================================
+// Device Orientation (Gyro Sensor) Handling
+// ==========================================================================
+async function handleOrientation(event) {
+  if (!state.isGyroEnabled) return;
+
+  const beta = event.beta; // デバイスの前後傾き (-180 〜 180)
+  if (beta === null) return;
+
+  // 最初のイベント受信時に現在角を基準点（0）としてキャリブレーション
+  if (state.initialBeta === null) {
+    state.initialBeta = beta;
+    return;
+  }
+
+  // 基準点からの変化量を取得
+  let delta = beta - state.initialBeta;
+
+  // 180度境界の回り込み補正
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+
+  // 感度倍率を乗算して映像ピッチオフセットに適用
+  state.gyroOffset = delta * state.gyroGain;
+  
+  // 描画更新
+  updateTransform();
+}
+
+// iOS 13+ でのモーションセンサーパーミッション要求
+async function requestDeviceOrientationPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && 
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const permissionState = await DeviceOrientationEvent.requestPermission();
+      return permissionState === 'granted';
+    } catch (error) {
+      console.error("ジャイロセンサーアクセス許可取得エラー:", error);
+      return false;
+    }
+  }
+  return true; // それ以外の環境は許可不要で即時利用可能
+}
+
+// ジャイロ連動の有効化・無効化
+async function setGyroEnabled(enabled) {
+  if (enabled) {
+    const isGranted = await requestDeviceOrientationPermission();
+    if (isGranted) {
+      state.isGyroEnabled = true;
+      state.initialBeta = null; // キャリブレーションの再トリガー
+      state.gyroOffset = 0.0;
+      el.gyroToggle.checked = true;
+      
+      // ジャイロイベントの監視を開始
+      window.addEventListener('deviceorientation', handleOrientation);
+      console.log("ジャイロ連動開始");
+    } else {
+      alert("ジャイロセンサー（モーションセンサー）へのアクセスが拒否されたため、連動機能を開始できませんでした。");
+      state.isGyroEnabled = false;
+      el.gyroToggle.checked = false;
+    }
+  } else {
+    state.isGyroEnabled = false;
+    state.gyroOffset = 0.0;
+    el.gyroToggle.checked = false;
+    window.removeEventListener('deviceorientation', handleOrientation);
+    console.log("ジャイロ連動停止");
+    updateTransform();
+  }
+}
+
 // ==========================================================================
 // Camera Access Control
 // ==========================================================================
 async function initCamera() {
-  // 既存のカメラストリームを停止
   if (state.stream) {
     state.stream.getTracks().forEach(track => track.stop());
   }
@@ -171,14 +319,11 @@ async function initCamera() {
 
   try {
     state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-    // 左右両方のビデオタグにカメラストリームをバインド
     el.videoLeft.srcObject = state.stream;
     el.videoRight.srcObject = state.stream;
     el.errorOverlay.classList.add('hidden');
   } catch (err) {
     console.warn("カメラアクセスエラー (facingMode指定):", err);
-    
-    // フォールバック1: facingModeなしで試行
     try {
       state.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       el.videoLeft.srcObject = state.stream;
@@ -202,11 +347,8 @@ function showCameraError(error) {
   el.errorOverlay.classList.remove('hidden');
 }
 
-// 前後カメラのトグル
 async function toggleCamera() {
   state.currentFacingMode = state.currentFacingMode === 'user' ? 'environment' : 'user';
-  
-  // 自撮り（イン）カメラの場合は自動でミラー表示を有効化
   if (state.currentFacingMode === 'user') {
     state.isMirrored = true;
     el.mirrorToggle.checked = true;
@@ -218,12 +360,10 @@ async function toggleCamera() {
   updateTransform();
 }
 
-// カメラデバイス一覧の取得
 async function checkCameraDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     state.availableCameras = devices.filter(d => d.kind === 'videoinput');
-    // デバイスが1つしかない場合はカメラ切り替えボタンを非表示にする
     if (state.availableCameras.length <= 1) {
       el.switchCameraBtn.style.display = 'none';
     } else {
@@ -238,12 +378,10 @@ async function checkCameraDevices() {
 // UI Reference lines (Grid / Plumb lines) Control
 // ==========================================================================
 function updateGridMode() {
-  // すべての静的・回転参照線のコンテナ表示を一括制御
   el.staticRefs.forEach(ref => {
     const showStatic = (state.gridMode === 'plumb' || state.gridMode === 'grid' || state.gridMode === 'both');
     ref.style.display = showStatic ? 'block' : 'none';
     
-    // 内包要素の制御
     const plumbLineV = ref.querySelector('.plumb-line-v');
     const plumbLineH = ref.querySelector('.plumb-line-h');
     const gridMesh = ref.querySelector('.grid-mesh');
@@ -279,10 +417,7 @@ function toggleVrMode(enabled) {
   el.vrModeToggle.checked = enabled;
 
   if (state.isVrMode) {
-    // 右目用コンテナを表示
     el.rightEye.classList.remove('hidden');
-    
-    // HMDへの装着を想定し、3秒後に自動的に操作パネルを閉じる（操作の邪魔にならないようにするため）
     setTimeout(() => {
       if (state.isVrMode) {
         el.controlPanel.classList.add('collapsed');
@@ -290,12 +425,9 @@ function toggleVrMode(enabled) {
       }
     }, 3000);
   } else {
-    // 右目用コンテナを非表示
     el.rightEye.classList.add('hidden');
   }
 
-  // アスペクト比や幅が変わるため、スケーリングを再適用
-  // トランジションのアニメーション(0.3s)によるズレを防ぐため段階的に更新
   updateTransform();
   setTimeout(updateTransform, 150);
   setTimeout(updateTransform, 350);
@@ -318,12 +450,12 @@ function toggleFullscreen() {
 // Event Listeners Setup
 // ==========================================================================
 function setupEventListeners() {
-  // スライダー操作
+  // 左右スライダー操作
   el.angleSlider.addEventListener('input', (e) => {
     setAngle(e.target.value);
   });
 
-  // 数値直接入力
+  // 左右数値直接入力
   el.angleInput.addEventListener('change', (e) => {
     setAngle(e.target.value);
   });
@@ -334,21 +466,21 @@ function setupEventListeners() {
     }
   });
 
-  // 目盛り(Ticks)をクリックしてその角度を設定
+  // 左右目盛りクリック
   document.querySelectorAll('.slider-ticks .tick').forEach(tick => {
     tick.addEventListener('click', () => {
       setAngle(tick.getAttribute('data-val'));
     });
   });
 
-  // プリセットボタン操作
+  // 左右プリセットボタン操作
   el.presetButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       setAngle(btn.getAttribute('data-angle'));
     });
   });
 
-  // 微調整ボタン
+  // 左右微調整ボタン
   el.btnDec10.addEventListener('click', () => setAngle(state.angle - 10));
   el.btnDec1.addEventListener('click', () => setAngle(state.angle - 1));
   el.btnDec01.addEventListener('click', () => setAngle(state.angle - 0.1));
@@ -356,6 +488,43 @@ function setupEventListeners() {
   el.btnInc01.addEventListener('click', () => setAngle(state.angle + 0.1));
   el.btnInc1.addEventListener('click', () => setAngle(state.angle + 1));
   el.btnInc10.addEventListener('click', () => setAngle(state.angle + 10));
+
+  // 前後スライダー操作
+  el.pitchSlider.addEventListener('input', (e) => {
+    setPitch(e.target.value);
+  });
+
+  // 前後数値直接入力
+  el.pitchInput.addEventListener('change', (e) => {
+    setPitch(e.target.value);
+  });
+  el.pitchInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+      setPitch(e.target.value);
+      el.pitchInput.blur();
+    }
+  });
+
+  // 前後目盛りクリック
+  document.querySelectorAll('.slider-ticks .tick-pitch').forEach(tick => {
+    tick.addEventListener('click', () => {
+      setPitch(tick.getAttribute('data-val'));
+    });
+  });
+
+  // 前後プリセットボタン操作
+  el.presetPitchButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      setPitch(btn.getAttribute('data-pitch'));
+    });
+  });
+
+  // 前後微調整ボタン
+  el.btnPitchDec5.addEventListener('click', () => setPitch(state.pitch - 5));
+  el.btnPitchDec1.addEventListener('click', () => setPitch(state.pitch - 1));
+  el.btnPitchReset.addEventListener('click', () => setPitch(0.0));
+  el.btnPitchInc1.addEventListener('click', () => setPitch(state.pitch + 1));
+  el.btnPitchInc5.addEventListener('click', () => setPitch(state.pitch + 5));
 
   // 自動ズームトグル
   el.autoScaleToggle.addEventListener('change', (e) => {
@@ -372,6 +541,17 @@ function setupEventListeners() {
   // VR/HMD モードトグル
   el.vrModeToggle.addEventListener('change', (e) => {
     toggleVrMode(e.target.checked);
+  });
+
+  // ジャイロ連動トグル
+  el.gyroToggle.addEventListener('change', (e) => {
+    setGyroEnabled(e.target.checked);
+  });
+
+  // ジャイロ感度設定
+  el.gyroGainSelect.addEventListener('change', (e) => {
+    state.gyroGain = parseFloat(e.target.value);
+    state.initialBeta = null; // 感度変更時にキャリブレーションをリセット
   });
 
   // 参照線表示モード
@@ -413,7 +593,7 @@ function setupEventListeners() {
   // エラー時再試行
   el.retryCameraBtn.addEventListener('click', initCamera);
 
-  // ウィンドウのリサイズイベント（自動ズーム倍率の動的再計算用）
+  // ウィンドウのリサイズイベント
   window.addEventListener('resize', () => {
     updateTransform();
   });
@@ -433,6 +613,7 @@ async function init() {
   
   // 初期位置反映
   setAngle(0.0);
+  setPitch(0.0);
 }
 
 // ページロード完了後に初期化
