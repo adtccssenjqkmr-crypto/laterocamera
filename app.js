@@ -13,6 +13,8 @@ const state = {
   initialBeta: null,               // ジャイロ基準角
   gyroOffset: 0.0,                 // ジャイロによる動的傾きオフセット
   selectedDeviceId: null,          // 選択中のカメラデバイスID
+  fitMode: 'cover',                // 画面フィットモード ('cover' or 'contain')
+  aspectRatio: '16:9',             // カメラ画角比率 ('16:9' or '4:3' or '1:1')
   gridMode: 'plumb',               // デフォルトは十字線
   gridColor: 'cyan',
   gridThickness: 'normal',
@@ -83,6 +85,8 @@ const el = {
   gridThicknessSelect: document.getElementById('gridThicknessSelect'),
   gyroGainSelect: document.getElementById('gyroGainSelect'),
   cameraSelect: document.getElementById('cameraSelect'),
+  fitModeSelect: document.getElementById('fitModeSelect'),
+  aspectRatioSelect: document.getElementById('aspectRatioSelect'),
   
   // アクションボタン
   fullscreenBtn: document.getElementById('fullscreenBtn'),
@@ -118,8 +122,8 @@ const el = {
 // ==========================================================================
 function updateTransform() {
   const radRoll = Math.abs((state.angle * Math.PI) / 180);
-  let visualPitch = state.pitch + (state.isGyroEnabled ? state.gyroOffset : 0.0);
   
+  let visualPitch = state.pitch + (state.isGyroEnabled ? state.gyroOffset : 0.0);
   if (visualPitch > 45) visualPitch = 45;
   if (visualPitch < -45) visualPitch = -45;
   
@@ -132,6 +136,9 @@ function updateTransform() {
   const w = el.leftEye.clientWidth || window.innerWidth;
   const h = el.leftEye.clientHeight || window.innerHeight;
 
+  // 'contain'（全体表示）モードで自動ズームがONのとき、
+  // 回転によって余白を消そうと拡大すると実質'cover'と同等になってしまうため、
+  // ユーザーが余白を気にせず映像全体を見たい場合は、自動ズームをOFFにすることを推奨します。
   if (state.isAutoScale) {
     if (w > 0 && h > 0) {
       if (state.angle !== 0) {
@@ -281,28 +288,30 @@ async function setGyroEnabled(enabled) {
 }
 
 // ==========================================================================
-// Camera Access Control & Zoom Integration
+// Camera Access Control & Zoom/Aspect/Fit Integration
 // ==========================================================================
 async function initCamera() {
-  // 既存ストリームのクリア
   if (state.stream) {
     state.stream.getTracks().forEach(track => track.stop());
   }
 
-  // カメラ制約の構築
+  // 画角アスペクト比の設定 (16:9 / 4:3 / 1:1)
+  const aspectIdeal = state.aspectRatio === '16:9' ? 1.7777777778 : (state.aspectRatio === '4:3' ? 1.3333333333 : 1.0);
+  const widthIdeal = state.aspectRatio === '16:9' ? 1920 : (state.aspectRatio === '4:3' ? 1440 : 1080);
+
   let videoConstraint = {};
   if (state.selectedDeviceId) {
-    // 選択されたカメラIDによる精密起動
     videoConstraint = {
       deviceId: { exact: state.selectedDeviceId },
-      width: { ideal: 1920 },
+      aspectRatio: { ideal: aspectIdeal },
+      width: { ideal: widthIdeal },
       height: { ideal: 1080 }
     };
   } else {
-    // 初期起動時: デフォルト背面カメラをリクエスト
     videoConstraint = {
       facingMode: 'environment',
-      width: { ideal: 1920 },
+      aspectRatio: { ideal: aspectIdeal },
+      width: { ideal: widthIdeal },
       height: { ideal: 1080 }
     };
   }
@@ -320,18 +329,20 @@ async function initCamera() {
 
     const activeTrack = state.stream.getVideoTracks()[0];
     
-    // 実際に起動したカメラのデバイスIDを取得して状態に記録
     if (activeTrack.getSettings) {
       state.selectedDeviceId = activeTrack.getSettings().deviceId || state.selectedDeviceId;
     }
 
-    // カメラズーム機能の検知と設定
+    // フィットモード（objectFit）の即時適用
+    el.videoLeft.style.objectFit = state.fitMode;
+    el.videoRight.style.objectFit = state.fitMode;
+
+    // ズーム機能の設定
     setupCameraZoom(activeTrack);
     
   } catch (err) {
     console.warn("カメラ起動エラー (制約指定):", err);
     try {
-      // 最低限のフォールバック起動
       state.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       el.videoLeft.srcObject = state.stream;
       el.videoRight.srcObject = state.stream;
@@ -346,7 +357,6 @@ async function initCamera() {
   }
 }
 
-// カメラズーム機能の検知・設定処理
 function setupCameraZoom(track) {
   if (!track) return;
   
@@ -354,7 +364,6 @@ function setupCameraZoom(track) {
   const capabilities = hasCapabilities ? track.getCapabilities() : {};
   const settings = typeof track.getSettings === 'function' ? track.getSettings() : {};
 
-  // デジタルズームがサポートされているかチェック (一部のChrome系ブラウザ)
   if (capabilities.zoom) {
     el.zoomSection.classList.remove('hidden');
     
@@ -366,22 +375,18 @@ function setupCameraZoom(track) {
     el.zoomSlider.max = maxZoom;
     el.zoomSlider.step = stepZoom;
     
-    // 現在のズーム値を適用、無ければ最小値
     state.zoom = settings.zoom || minZoom;
     el.zoomSlider.value = state.zoom;
     el.zoomValue.textContent = state.zoom.toFixed(1);
 
-    // スライダ目盛りラベルの更新
     document.getElementById('zoomMinTick').textContent = minZoom.toFixed(1) + 'x';
     document.getElementById('zoomMidTick').textContent = ((minZoom + maxZoom) / 2).toFixed(1) + 'x';
     document.getElementById('zoomMaxTick').textContent = maxZoom.toFixed(1) + 'x';
   } else {
-    // ズーム非対応デバイスではコントローラーを隠す
     el.zoomSection.classList.add('hidden');
   }
 }
 
-// デジタルズームの適用
 async function applyZoom(value) {
   const track = state.stream ? state.stream.getVideoTracks()[0] : null;
   if (track && typeof track.applyConstraints === 'function') {
@@ -389,7 +394,6 @@ async function applyZoom(value) {
       await track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] });
       state.zoom = parseFloat(value);
       el.zoomValue.textContent = state.zoom.toFixed(1);
-      console.log("ズーム倍率適用:", state.zoom);
     } catch (e) {
       console.warn("ズーム適用エラー:", e);
     }
@@ -407,24 +411,20 @@ function showCameraError(error) {
   el.errorOverlay.classList.remove('hidden');
 }
 
-// 利用可能なカメラデバイス一覧の取得とセレクトボックス構築
+// カメラデバイス選択リストの構築
 async function checkCameraDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     state.availableCameras = devices.filter(d => d.kind === 'videoinput');
     
-    // カメラセレクトボックスをクリア
     el.cameraSelect.innerHTML = '';
     
-    // セレクトボックスに選択肢を追加
     state.availableCameras.forEach((device, index) => {
       const option = document.createElement('option');
       option.value = device.deviceId;
       
-      // カメラの向きや特徴を分かりやすく日本語変換
       let label = device.label || `カメラ ${index + 1}`;
       if (label.includes('facing back') || label.includes('back') || label.includes('背面')) {
-        // 広角や望遠レンズが名前から判別できる場合があるため補正
         if (label.includes('ultra wide') || label.includes('広角') || label.includes('wide')) {
           label = `背面超広角カメラ (${index + 1})`;
         } else {
@@ -436,7 +436,6 @@ async function checkCameraDevices() {
       
       option.textContent = label;
       
-      // 現在起動中のカメラIDと一致すれば選択状態にする
       if (device.deviceId === state.selectedDeviceId) {
         option.selected = true;
       }
@@ -634,11 +633,23 @@ function setupEventListeners() {
     state.initialBeta = null;
   });
 
+  // 表示フィットモード切り替え
+  el.fitModeSelect.addEventListener('change', (e) => {
+    state.fitMode = e.target.value;
+    el.videoLeft.style.objectFit = state.fitMode;
+    el.videoRight.style.objectFit = state.fitMode;
+    updateTransform();
+  });
+
+  // カメラ画角比率アスペクト比切り替え
+  el.aspectRatioSelect.addEventListener('change', (e) => {
+    state.aspectRatio = e.target.value;
+    initCamera();
+  });
+
   // カメラデバイスセレクトボックス切り替え
   el.cameraSelect.addEventListener('change', (e) => {
     state.selectedDeviceId = e.target.value;
-    
-    // インカメラ（前面）が選択された場合は自動で左右反転（ミラー）を有効にする
     const selectedOption = e.target.options[e.target.selectedIndex];
     if (selectedOption && selectedOption.textContent.includes('インカメラ')) {
       state.isMirrored = true;
@@ -647,7 +658,6 @@ function setupEventListeners() {
       state.isMirrored = false;
       el.mirrorToggle.checked = false;
     }
-    
     initCamera();
   });
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'latero-camera-cache-v4';
+const CACHE_NAME = 'latero-camera-cache-v5';
 const ASSETS = [
   './',
   './index.html',

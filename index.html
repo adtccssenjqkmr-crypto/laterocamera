@@ -43,7 +43,7 @@
           <div class="rotated-line-h"></div>
         </div>
         
-        <!-- 画面中央 of 基準マーク -->
+        <!-- 画面中央の基準マーク -->
         <div class="center-crosshair"></div>
       </div>
 
@@ -64,7 +64,7 @@
           <div class="rotated-line-h"></div>
         </div>
         
-        <!-- 画面中央 of 基準マーク -->
+        <!-- 画面中央の基準マーク -->
         <div class="center-crosshair"></div>
       </div>
 
@@ -204,7 +204,7 @@
         </div>
       </div>
 
-      <!-- ==================== 3. カメラズームコントロール (追加) ==================== -->
+      <!-- ==================== 3. カメラズームコントロール ==================== -->
       <div class="panel-section zoom-controller hidden" id="zoomSection">
         <div class="angle-header">
           <label for="zoomSlider">カメラ倍率 (ズーム)</label>
@@ -263,6 +263,29 @@
               <input type="checkbox" id="vrModeToggle">
               <span class="slider-round"></span>
             </label>
+          </div>
+
+          <!-- 表示フィットモード (追加：全画面/全体表示) -->
+          <div class="select-control">
+            <div class="select-info">
+              <span class="select-label">画面フィット</span>
+            </div>
+            <select id="fitModeSelect" class="styled-select">
+              <option value="cover" selected>全画面（拡大・余白なし）</option>
+              <option value="contain">全体表示（等倍・黒帯あり）</option>
+            </select>
+          </div>
+
+          <!-- カメラ画角比率 (追加：16:9/4:3) -->
+          <div class="select-control">
+            <div class="select-info">
+              <span class="select-label">カメラ画角比率 (アスペクト比)</span>
+            </div>
+            <select id="aspectRatioSelect" class="styled-select">
+              <option value="16:9" selected>横長 (16:9)</option>
+              <option value="4:3">標準 (4:3・センサー全体)</option>
+              <option value="1:1">正方形 (1:1)</option>
+            </select>
           </div>
 
           <!-- 参照線モード -->
