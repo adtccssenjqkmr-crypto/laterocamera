@@ -21,9 +21,10 @@
   --text-muted: #94a3b8;
   --text-inverse: #0f172a;
 
-  /* Default guide line color (will be overridden by JS) */
+  /* Default guide line style (will be overridden by JS) */
   --guide-color: #06b6d4;        /* Cyan */
   --guide-opacity: 0.6;
+  --guide-thickness: 1.5px;
 }
 
 /* ==========================================================================
@@ -61,7 +62,7 @@ html, body {
 }
 
 /* ==========================================================================
-   Camera Viewport & Transformations
+   Camera Viewport & Dual Eye Layout (VR Support)
    ========================================================================== */
 .camera-viewport {
   position: absolute;
@@ -73,11 +74,29 @@ html, body {
   overflow: hidden;
   background-color: #000;
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
 }
 
-#video {
+.eye-container {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 左右画面分割用の境界線（VRモード時） */
+#rightEye {
+  border-left: 2px solid #000000;
+}
+
+.video-element {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -118,7 +137,7 @@ html, body {
   position: absolute;
   left: 50%;
   top: 0;
-  width: 1.5px;
+  width: var(--guide-thickness);
   height: 100%;
   transform: translateX(-50%);
   background-color: var(--guide-color);
@@ -130,7 +149,7 @@ html, body {
   position: absolute;
   top: 50%;
   left: 0;
-  height: 1.5px;
+  height: var(--guide-thickness);
   width: 100%;
   transform: translateY(-50%);
   background-color: var(--guide-color);

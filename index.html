@@ -25,23 +25,49 @@
     
     <!-- カメラ映像表示領域 -->
     <div class="camera-viewport" id="viewport">
-      <video id="video" autoplay playsinline muted></video>
       
-      <!-- 静的参照線（画面に対して固定） -->
-      <div class="reference-overlay static-ref" id="staticRef">
-        <div class="plumb-line-v"></div>
-        <div class="plumb-line-h"></div>
-        <div class="grid-mesh"></div>
+      <!-- 左目用ビューポート (通常時は全画面) -->
+      <div class="eye-container" id="leftEye">
+        <video id="videoLeft" class="video-element" autoplay playsinline muted></video>
+        
+        <!-- 静的参照線（画面に対して固定） -->
+        <div class="reference-overlay static-ref">
+          <div class="plumb-line-v"></div>
+          <div class="plumb-line-h"></div>
+          <div class="grid-mesh"></div>
+        </div>
+
+        <!-- 動的参照線（映像と一緒に回転） -->
+        <div class="reference-overlay rotated-ref">
+          <div class="rotated-line-v"></div>
+          <div class="rotated-line-h"></div>
+        </div>
+        
+        <!-- 画面中央の基準マーク -->
+        <div class="center-crosshair"></div>
       </div>
 
-      <!-- 動的参照線（映像と一緒に回転） -->
-      <div class="reference-overlay rotated-ref" id="rotatedRef">
-        <div class="rotated-line-v"></div>
-        <div class="rotated-line-h"></div>
+      <!-- 右目用ビューポート (VRモード時のみ表示) -->
+      <div class="eye-container hidden" id="rightEye">
+        <video id="videoRight" class="video-element" autoplay playsinline muted></video>
+        
+        <!-- 静的参照線（画面に対して固定） -->
+        <div class="reference-overlay static-ref">
+          <div class="plumb-line-v"></div>
+          <div class="plumb-line-h"></div>
+          <div class="grid-mesh"></div>
+        </div>
+
+        <!-- 動的参照線（映像と一緒に回転） -->
+        <div class="reference-overlay rotated-ref">
+          <div class="rotated-line-v"></div>
+          <div class="rotated-line-h"></div>
+        </div>
+        
+        <!-- 画面中央の基準マーク -->
+        <div class="center-crosshair"></div>
       </div>
-      
-      <!-- 画面中央の基準マーク -->
-      <div class="center-crosshair"></div>
+
     </div>
 
     <!-- フローティング：コントロール表示トグルボタン（コントロールパネル非表示時に表示） -->
@@ -137,6 +163,18 @@
           </label>
         </div>
 
+        <!-- VR/HMD モード (追加) -->
+        <div class="toggle-control">
+          <div class="toggle-info">
+            <span class="toggle-label">VR/HMDモード</span>
+            <span class="toggle-desc">左右2画面に均等分割</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="vrModeToggle">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
         <!-- 参照線モード -->
         <div class="select-control">
           <div class="select-info">
@@ -162,6 +200,19 @@
             <option value="green">グリーン (緑)</option>
             <option value="yellow">イエロー (黄)</option>
             <option value="white">ホワイト (白)</option>
+          </select>
+        </div>
+
+        <!-- ガイド線の太さ (追加でバランス調整) -->
+        <div class="select-control">
+          <div class="select-info">
+            <span class="select-label">ガイド線の太さ</span>
+          </div>
+          <select id="gridThicknessSelect" class="styled-select">
+            <option value="thin">細い (1.0px)</option>
+            <option value="normal" selected>標準 (1.5px)</option>
+            <option value="thick">太い (3.0px)</option>
+            <option value="extra">極太 (5.0px)</option>
           </select>
         </div>
       </div>

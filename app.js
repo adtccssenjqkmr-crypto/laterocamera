@@ -5,15 +5,17 @@ const state = {
   angle: 0.0,
   isAutoScale: true,
   isMirrored: false,
+  isVrMode: false,                 // VR/HMDモード (左右画面分割)
   currentFacingMode: 'environment', // 優先して背面カメラを使用
   gridMode: 'plumb',               // デフォルトは十字線
   gridColor: 'cyan',
+  gridThickness: 'normal',         // ガイド線の太さ
   stream: null,
   availableCameras: []
 };
 
 // ==========================================================================
-// Color Mapping for Guide Lines
+// Mappings for CSS Properties
 // ==========================================================================
 const colorMap = {
   cyan: '#06b6d4',
@@ -23,31 +25,60 @@ const colorMap = {
   white: '#ffffff'
 };
 
+const thicknessMap = {
+  thin: '1.0px',
+  normal: '1.5px',
+  thick: '3.0px',
+  extra: '5.0px'
+};
+
 // ==========================================================================
 // DOM Elements
 // ==========================================================================
 const el = {
+  // ビューポートと目用コンテナ
   viewport: document.getElementById('viewport'),
-  video: document.getElementById('video'),
+  leftEye: document.getElementById('leftEye'),
+  rightEye: document.getElementById('rightEye'),
+  
+  // ビデオ要素 (左右)
+  videoLeft: document.getElementById('videoLeft'),
+  videoRight: document.getElementById('videoRight'),
+  
+  // パネルコントロール
   controlPanel: document.getElementById('controlPanel'),
   showControlsBtn: document.getElementById('showControlsBtn'),
   hideControlsBtn: document.getElementById('hideControlsBtn'),
   angleSlider: document.getElementById('angleSlider'),
   angleInput: document.getElementById('angleInput'),
+  
+  // トグルスイッチ
   autoScaleToggle: document.getElementById('autoScaleToggle'),
   mirrorToggle: document.getElementById('mirrorToggle'),
+  vrModeToggle: document.getElementById('vrModeToggle'),
+  
+  // セレクトボックス
   gridModeSelect: document.getElementById('gridModeSelect'),
   gridColorSelect: document.getElementById('gridColorSelect'),
+  gridThicknessSelect: document.getElementById('gridThicknessSelect'),
+  
+  // アクションボタン
   switchCameraBtn: document.getElementById('switchCameraBtn'),
   fullscreenBtn: document.getElementById('fullscreenBtn'),
-  staticRef: document.getElementById('staticRef'),
-  rotatedRef: document.getElementById('rotatedRef'),
+  
+  // 参照線リスト (querySelectorAllで一括管理)
+  staticRefs: document.querySelectorAll('.static-ref'),
+  rotatedRefs: document.querySelectorAll('.rotated-ref'),
+  
+  // エラーダイアログ
   errorOverlay: document.getElementById('errorOverlay'),
   errorMessage: document.getElementById('errorMessage'),
   retryCameraBtn: document.getElementById('retryCameraBtn'),
+  
+  // プリセットボタン
   presetButtons: document.querySelectorAll('.preset-btn'),
   
-  // Fine-tune buttons
+  // 微調整ボタン
   btnDec10: document.getElementById('btnDec10'),
   btnDec1: document.getElementById('btnDec1'),
   btnDec01: document.getElementById('btnDec01'),
@@ -65,30 +96,36 @@ function updateTransform() {
   let scaleFactor = 1.0;
 
   if (state.isAutoScale && state.angle !== 0) {
-    const w = el.viewport.clientWidth || window.innerWidth;
-    const h = el.viewport.clientHeight || window.innerHeight;
+    // 左目用コンテナの寸法を基準にする（VRモード時は画面半分、通常時は全画面のサイズを自動取得）
+    const w = el.leftEye.clientWidth || window.innerWidth;
+    const h = el.leftEye.clientHeight || window.innerHeight;
     
     if (w > 0 && h > 0) {
-      // 画面アスペクト比の最大値（縦向き・横向きに対応）
+      // 画面アスペクト比の最大値
       const aspectRatio = Math.max(w / h, h / w);
-      // 数学的に完璧な対角線カバーのスケール計算式
+      // 回転角とアスペクト比を考慮した、余白が生じないためのスケール倍率の計算
       scaleFactor = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad)) * aspectRatio;
     }
   }
 
-  // ミラー表示と回転・拡大を組み合わせたCSS変形
+  // 左右反転と回転・拡大の組み合わせ
   const horizontalScale = state.isMirrored ? -scaleFactor : scaleFactor;
-  el.video.style.transform = `rotate(${state.angle}deg) scale(${horizontalScale}, ${scaleFactor})`;
+  const transformString = `rotate(${state.angle}deg) scale(${horizontalScale}, ${scaleFactor})`;
+
+  // 左右のビデオ要素両方に同時に適用
+  el.videoLeft.style.transform = transformString;
+  el.videoRight.style.transform = transformString;
 
   // 連動回転するガイドラインの更新
   if (state.gridMode === 'rotated' || state.gridMode === 'both') {
-    el.rotatedRef.style.transform = `rotate(${state.angle}deg)`;
+    el.rotatedRefs.forEach(ref => {
+      ref.style.transform = `rotate(${state.angle}deg)`;
+    });
   }
 }
 
 // 角度変更時の状態同期
 function setAngle(newAngle) {
-  // 角度を -180 〜 180 の範囲に収める
   let boundedAngle = parseFloat(newAngle);
   if (isNaN(boundedAngle)) boundedAngle = 0.0;
   
@@ -134,7 +171,9 @@ async function initCamera() {
 
   try {
     state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-    el.video.srcObject = state.stream;
+    // 左右両方のビデオタグにカメラストリームをバインド
+    el.videoLeft.srcObject = state.stream;
+    el.videoRight.srcObject = state.stream;
     el.errorOverlay.classList.add('hidden');
   } catch (err) {
     console.warn("カメラアクセスエラー (facingMode指定):", err);
@@ -142,7 +181,8 @@ async function initCamera() {
     // フォールバック1: facingModeなしで試行
     try {
       state.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      el.video.srcObject = state.stream;
+      el.videoLeft.srcObject = state.stream;
+      el.videoRight.srcObject = state.stream;
       el.errorOverlay.classList.add('hidden');
     } catch (fallbackErr) {
       console.error("すべてのカメラアクセスに失敗:", fallbackErr);
@@ -165,7 +205,8 @@ function showCameraError(error) {
 // 前後カメラのトグル
 async function toggleCamera() {
   state.currentFacingMode = state.currentFacingMode === 'user' ? 'environment' : 'user';
-  // インカメラの場合は自動でミラーを有効化（使いやすさのため）
+  
+  // 自撮り（イン）カメラの場合は自動でミラー表示を有効化
   if (state.currentFacingMode === 'user') {
     state.isMirrored = true;
     el.mirrorToggle.checked = true;
@@ -177,7 +218,7 @@ async function toggleCamera() {
   updateTransform();
 }
 
-// カメラデバイス一覧の取得（イン/アウト選択の表示切り替え可否判定用）
+// カメラデバイス一覧の取得
 async function checkCameraDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -197,47 +238,67 @@ async function checkCameraDevices() {
 // UI Reference lines (Grid / Plumb lines) Control
 // ==========================================================================
 function updateGridMode() {
-  // すべて非表示にする
-  el.staticRef.style.display = 'none';
-  el.rotatedRef.style.display = 'none';
-  
-  const plumbLineV = el.staticRef.querySelector('.plumb-line-v');
-  const plumbLineH = el.staticRef.querySelector('.plumb-line-h');
-  const gridMesh = el.staticRef.querySelector('.grid-mesh');
-  
-  plumbLineV.style.display = 'none';
-  plumbLineH.style.display = 'none';
-  gridMesh.style.display = 'none';
+  // すべての静的・回転参照線のコンテナ表示を一括制御
+  el.staticRefs.forEach(ref => {
+    const showStatic = (state.gridMode === 'plumb' || state.gridMode === 'grid' || state.gridMode === 'both');
+    ref.style.display = showStatic ? 'block' : 'none';
+    
+    // 内包要素の制御
+    const plumbLineV = ref.querySelector('.plumb-line-v');
+    const plumbLineH = ref.querySelector('.plumb-line-h');
+    const gridMesh = ref.querySelector('.grid-mesh');
+    
+    if (plumbLineV) plumbLineV.style.display = (state.gridMode === 'plumb' || state.gridMode === 'both') ? 'block' : 'none';
+    if (plumbLineH) plumbLineH.style.display = (state.gridMode === 'plumb' || state.gridMode === 'both') ? 'block' : 'none';
+    if (gridMesh) gridMesh.style.display = (state.gridMode === 'grid') ? 'block' : 'none';
+  });
 
-  switch (state.gridMode) {
-    case 'plumb':
-      el.staticRef.style.display = 'block';
-      plumbLineV.style.display = 'block';
-      plumbLineH.style.display = 'block';
-      break;
-    case 'grid':
-      el.staticRef.style.display = 'block';
-      gridMesh.style.display = 'block';
-      break;
-    case 'rotated':
-      el.rotatedRef.style.display = 'block';
-      break;
-    case 'both':
-      el.staticRef.style.display = 'block';
-      plumbLineV.style.display = 'block';
-      plumbLineH.style.display = 'block';
-      el.rotatedRef.style.display = 'block';
-      break;
-    case 'none':
-    default:
-      break;
-  }
+  el.rotatedRefs.forEach(ref => {
+    const showRotated = (state.gridMode === 'rotated' || state.gridMode === 'both');
+    ref.style.display = showRotated ? 'block' : 'none';
+  });
+  
   updateTransform();
 }
 
 function updateGridColor() {
   const colorCode = colorMap[state.gridColor] || '#06b6d4';
   document.documentElement.style.setProperty('--guide-color', colorCode);
+}
+
+function updateGridThickness() {
+  const thicknessVal = thicknessMap[state.gridThickness] || '1.5px';
+  document.documentElement.style.setProperty('--guide-thickness', thicknessVal);
+}
+
+// ==========================================================================
+// VR/HMD Mode Layout Control
+// ==========================================================================
+function toggleVrMode(enabled) {
+  state.isVrMode = enabled;
+  el.vrModeToggle.checked = enabled;
+
+  if (state.isVrMode) {
+    // 右目用コンテナを表示
+    el.rightEye.classList.remove('hidden');
+    
+    // HMDへの装着を想定し、3秒後に自動的に操作パネルを閉じる（操作の邪魔にならないようにするため）
+    setTimeout(() => {
+      if (state.isVrMode) {
+        el.controlPanel.classList.add('collapsed');
+        el.showControlsBtn.classList.remove('hidden');
+      }
+    }, 3000);
+  } else {
+    // 右目用コンテナを非表示
+    el.rightEye.classList.add('hidden');
+  }
+
+  // アスペクト比や幅が変わるため、スケーリングを再適用
+  // トランジションのアニメーション(0.3s)によるズレを防ぐため段階的に更新
+  updateTransform();
+  setTimeout(updateTransform, 150);
+  setTimeout(updateTransform, 350);
 }
 
 // ==========================================================================
@@ -308,16 +369,27 @@ function setupEventListeners() {
     updateTransform();
   });
 
-  // グリッド表示モード
+  // VR/HMD モードトグル
+  el.vrModeToggle.addEventListener('change', (e) => {
+    toggleVrMode(e.target.checked);
+  });
+
+  // 参照線表示モード
   el.gridModeSelect.addEventListener('change', (e) => {
     state.gridMode = e.target.value;
     updateGridMode();
   });
 
-  // グリッドラインの色
+  // 参照線色
   el.gridColorSelect.addEventListener('change', (e) => {
     state.gridColor = e.target.value;
     updateGridColor();
+  });
+
+  // 参照線の太さ
+  el.gridThicknessSelect.addEventListener('change', (e) => {
+    state.gridThickness = e.target.value;
+    updateGridThickness();
   });
 
   // カメラ切り替え
@@ -353,6 +425,7 @@ function setupEventListeners() {
 async function init() {
   setupEventListeners();
   updateGridColor();
+  updateGridThickness();
   updateGridMode();
   
   await initCamera();
