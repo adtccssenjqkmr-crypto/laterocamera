@@ -331,7 +331,7 @@ html, body {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-#angleInput, #pitchInput {
+#angleInput, #pitchInput, #zoomValue {
   background: transparent;
   border: none;
   color: var(--text-main);
@@ -368,7 +368,7 @@ html, body {
   padding: 10px 0;
 }
 
-#angleSlider, #pitchSlider {
+#angleSlider, #pitchSlider, #zoomSlider {
   -webkit-appearance: none;
   width: 100%;
   height: 6px;
@@ -378,7 +378,9 @@ html, body {
 }
 
 /* スライダーつまみ */
-#angleSlider::-webkit-slider-thumb, #pitchSlider::-webkit-slider-thumb {
+#angleSlider::-webkit-slider-thumb, 
+#pitchSlider::-webkit-slider-thumb,
+#zoomSlider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 28px;
@@ -391,7 +393,9 @@ html, body {
   transition: transform 0.1s;
 }
 
-#angleSlider::-webkit-slider-thumb:active, #pitchSlider::-webkit-slider-thumb:active {
+#angleSlider::-webkit-slider-thumb:active, 
+#pitchSlider::-webkit-slider-thumb:active,
+#zoomSlider::-webkit-slider-thumb:active {
   transform: scale(1.2);
 }
 
@@ -403,7 +407,7 @@ html, body {
   padding: 0 4px;
 }
 
-.tick, .tick-pitch {
+.tick, .tick-pitch, .tick-zoom {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -683,12 +687,37 @@ input:checked + .slider-round:before {
 }
 
 /* ==========================================================================
-   Panel Footer (System Actions)
+   Panel Footer (System Actions & Camera Selector)
    ========================================================================== */
 .panel-footer {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   margin-top: 4px;
+  align-items: stretch;
+}
+
+.footer-select {
+  flex: 1.6;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--bg-control);
+  border: 1px solid var(--bg-panel-border);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.footer-select .select-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.footer-select .styled-select {
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  height: 28px;
+  background: rgba(15, 23, 42, 0.8);
 }
 
 .btn-action {
